@@ -141,15 +141,32 @@ Open a pull request in that repo — the agent reviews it and posts comments aut
 
 ## What I learned
 
-<!-- TODO: REWRITE THIS IN YOUR OWN WORDS before you'd point anyone at it. This is the section
-interviewers read most closely, and they can tell when it's not yours. A few honest prompts to
-answer, in your voice:
-  - What did you understand about production systems that you didn't before? (fast 200 + background work,
-    verifying webhooks, graceful degradation...)
-  - What did you deliberately NOT build, and why? (vector DB, job queue, approval dashboard)
-  - Where does this system still fail, and how do you know? (grep can't see installed libraries; the
-    same issue can be flagged under multiple categories)
-Naming your system's real limits is more convincing than listing its features. -->
+Building this took me from writing scripts to reasoning about a *system* — one that runs unattended and talks to the outside world. The lessons that stuck:
+
+- **A web service has to answer fast, then work slowly.** The webhook must return `200` in milliseconds or GitHub retries it — so the real review runs in a background task. Separating "acknowledge" from "do the work" was my first taste of how production services actually behave.
+- **Never trust incoming data.** Anyone can POST to a public webhook URL. Verifying the HMAC signature before acting is the difference between an endpoint and a vulnerability.
+- **Let code do what code is good at, and the LLM do what it's good at.** Line numbers and "does this function exist in the repo" are facts a computer can compute exactly — so I compute them in Python and hand them to the model as ground truth, instead of asking the LLM to guess and hallucinate.
+- **Confidence can be measured, not asked for.** Instead of asking the model "how sure are you?" (which it can't answer honestly), I run each reviewer several times and treat agreement across runs as the confidence score.
+- **The right tool is often the boring one.** For looking up symbols in a codebase, plain `grep` beats a vector database — exact, free, and it never invents a match. I only reach for heavier tools when a problem actually needs them.
+- **Reliability is what you don't see.** A single failed LLM call shouldn't sink the whole review, and a crashed review shouldn't leak temp files forever. Retries, graceful degradation, and guaranteed cleanup are invisible when they work — and that's the point.
+- **Knowing a system's limits is part of building it.** This agent can't see functions imported from installed libraries (grep only reads the repo), and it can still report the same issue under two categories. I'd rather name those honestly than pretend they don't exist.
+
+<!-- TODO (do this before you show anyone): add ONE sentence here about a specific bug you hit and fixed —
+e.g. the stale server process that kept serving old code, or the duplicate function that was silently
+disabling grounding. A concrete war story is what proves you actually built this. -->
+
+---
+
+## Future scope
+
+The current system is a working, codebase-aware reviewer. The next steps focus on *proving* it works and making it smarter about meaning, not just symbols:
+
+- **Measure it, don't just trust it.** Build an evaluation harness — a labeled set of PRs with known bugs and a script that reports precision and recall. "How do you know it's any good?" should have a number as its answer.
+- **From lexical to semantic retrieval.** Add embedding-based search so the agent can catch *duplicated logic* and *pattern violations* — cases where the code means the same thing but shares no keywords, which `grep` can't see.
+- **Blast-radius analysis.** When a function changes, find every caller across the repo and flag the ones that might break — turning single-file review into whole-codebase impact analysis.
+- **Smarter de-duplication.** Merge the same underlying issue when multiple specialists report it under different categories.
+- **Scale the infrastructure when it's earned.** A real job queue (Redis/ARQ) once background latency hurts, a human-approval dashboard for flagged findings, and containerized deployment with CI/CD.
+- **Beyond one platform.** Support GitLab and Bitbucket by abstracting the webhook + comment layer.
 
 ---
 

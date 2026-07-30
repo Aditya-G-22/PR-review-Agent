@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets — never commit
+.env
+
+# Local tooling / binaries
+ngrok.exe
+
+# Personal scratch tests (not part of the product)
+fetch_diff.py
+post_test.py
+post_inline_test.py
+test_ai.py

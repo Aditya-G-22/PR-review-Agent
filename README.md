@@ -4,8 +4,7 @@ An autonomous code-review agent that watches a GitHub repository, and whenever a
 
 > **Why this exists:** Human code review is slow, inconsistent, and easy to skip under deadline pressure — yet most real bugs (SQL injection, undefined functions, missing tests) are caught by *reading the code*, not by running it. This agent gives every PR an instant, consistent first-pass review, so humans spend their attention on the findings that actually need judgment.
 
-<!-- TODO: add a demo screenshot/GIF here — you already have the PR #9 screenshots showing the "Undefined function" comment. Drop one in docs/images/ and link it:
-![Demo — undefined function caught on a live PR](docs/images/demo.png) -->
+![Demo — undefined function caught on a live PR](docs/images/demo.png)
 
 ---
 

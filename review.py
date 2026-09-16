@@ -14,7 +14,7 @@ from number_diff import number_diff, diff_line_map
 
 # =========================================== 2. Setup ==========================================
 load_dotenv()
-llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.5)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
 CONFIDENCE_THRESHOLD = 0.6
 
 
@@ -48,6 +48,7 @@ Rules:
 - Only report real issues backed by evidence in the diff. Never speculate, assume missing context, or invent problems.
 - Prefer reporting nothing over reporting an uncertain or low-value issue.
 - Ignore style/formatting/preference nits unless they affect correctness.
+- A change that is already correct, documented, and validated is NOT a finding. Do not manufacture issues to look thorough — a new function that has a docstring needs no docs finding, and a small pure function with obvious behaviour needs no test finding. Report only a concrete, demonstrable problem.
 - Each diff line is prefixed with its real line number, e.g. "17: +code". Put that exact number in the "line" field. Never guess a line.
 - If you find nothing in your area, return an empty findings array.
 
@@ -76,8 +77,11 @@ TESTS_PROMPT = f"""
 You are a senior engineer reviewing a pull request diff for test coverage.
 Focus ONLY on testing. Ignore security, general correctness, and docs — other reviewers cover those.
 
-Look for: new or changed logic with no accompanying tests, important edge cases left untested,
-assertions too weak to be meaningful, and brittle or incorrect tests.
+Only flag missing tests for logic that genuinely warrants them: multiple branches, non-obvious
+edge cases, calculations that could be wrong, or error paths. A short, obvious, single-behaviour
+function (e.g. a simple getter or a one-line formula) does NOT require a test finding — do not
+flag it. Prefer silence over a low-value "add a test" comment.
+Also look for: important edge cases left untested, assertions too weak to be meaningful, and brittle or incorrect tests.
 {SHARED_RULES}
 """
 

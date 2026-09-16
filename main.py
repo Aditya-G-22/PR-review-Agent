@@ -39,6 +39,7 @@ def run_review(repo, number):
             "Accept": "application/vnd.github+json",
         }
         pr = requests.get(f"https://api.github.com/repos/{repo}/pulls/{number}", headers=headers).json()
+        print("PR API response:", pr)
         commit_id = pr["head"]["sha"]
 
         folder = clone_pr(repo, commit_id)

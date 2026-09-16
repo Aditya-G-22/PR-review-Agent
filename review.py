@@ -14,7 +14,7 @@ from number_diff import number_diff, diff_line_map
 
 # =========================================== 2. Setup ==========================================
 load_dotenv()
-llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
+llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0.2)
 CONFIDENCE_THRESHOLD = 0.6
 
 

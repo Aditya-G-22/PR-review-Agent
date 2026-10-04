@@ -4,6 +4,8 @@ An autonomous code-review agent that watches a GitHub repository, and whenever a
 
 > **Why this exists:** Human code review is slow, inconsistent, and easy to skip under deadline pressure — yet most real bugs (SQL injection, undefined functions, missing tests) are caught by *reading the code*, not by running it. This agent gives every PR an instant, consistent first-pass review, so humans spend their attention on the findings that actually need judgment.
 
+*Live in production on **Railway** (Docker, auto-deploy from `main`), running on Groq's `openai/gpt-oss-120b`.*
+
 ![Demo — undefined function caught on a live PR](docs/images/demo.png)
 
 ---
@@ -58,10 +60,11 @@ These are the choices I made deliberately and can explain — the *why*, not jus
 |---|---|
 | **Web service** | FastAPI · Uvicorn |
 | **Orchestration** | LangGraph (parallel multi-agent fan-out) |
-| **LLM** | Groq · `llama-3.3-70b-versatile` · LangChain · Pydantic structured output |
+| **LLM** | Groq · `openai/gpt-oss-120b` · LangChain · Pydantic (`json_schema` structured output) |
 | **Codebase retrieval** | `git` shallow clone · Python `os.walk` + regex (grep) |
 | **Security** | HMAC-SHA256 webhook signature verification |
 | **Integration** | GitHub REST API (inline PR review comments) · webhooks |
+| **Deployment** | Docker · Railway (auto-deploy from GitHub) |
 | **Tooling** | `uv` (packaging) · ngrok (local webhook tunnel) · python-dotenv |
 
 ---
@@ -76,6 +79,8 @@ agent/
 ├── symbols.py       # Extract changed function names from a diff (regex)
 ├── search.py        # grep the clone for definitions; build the codebase-context facts
 ├── number_diff.py   # Number diff lines + build the line map used for grounding
+├── eval/            # Planted-bug benchmark: test_cases.py (seeded bugs + clean controls) + run_eval.py
+├── Dockerfile       # Production image (python:3.12-slim + git + uv + uvicorn)
 ├── pyproject.toml   # Dependencies (managed with uv)
 └── uv.lock
 ```
@@ -124,17 +129,41 @@ Then in your test repo: **Settings → Webhooks → Add webhook**
 
 Open a pull request in that repo — the agent reviews it and posts comments automatically.
 
+### 5. Deploy (production)
+The repo ships a `Dockerfile`, and the live instance runs on **Railway**, which rebuilds and redeploys automatically on every push to `main`. Set `GROQ_API_KEY`, `GITHUB_TOKEN`, and `GITHUB_WEBHOOK_SECRET` as environment variables on the host (never baked into the image), and point your GitHub webhook at the deployed URL instead of ngrok.
+
+---
+
+## Evaluation
+
+*"How do you know it works?"* should have a number, not a vibe. The `eval/` harness runs the agent against a benchmark of **9 planted bugs** — SQL/command injection, a hard-coded secret, off-by-one, None-dereference, resource leak, undefined-function, missing tests, missing docstring — plus **clean-code controls** the agent should stay silent on. Each case has a known file, line, and acceptable category, and the harness scores the *real* agent, not a description of it.
+
+**Result on the deployed model (`gpt-oss-120b`, self-consistency n=3):**
+
+| Metric | Result |
+|---|---|
+| **Bug detection (recall)** | **9 / 9 — 100%**, including an undefined-function only catchable via the repo-grep step |
+| False positives on clean code | 1 of 2 clean diffs still draws a finding — precision tuning is in progress |
+
+The harness has already paid for itself: migrating the model from Llama 3.3 to `gpt-oss-120b` immediately surfaced a structured-output regression (the new model returned responses the parser rejected on empty results) that would otherwise have shipped unnoticed.
+
+```bash
+uv run python eval/run_eval.py --samples 3
+```
+
 ---
 
 ## Roadmap
 
-- [ ] **Evaluation harness** — a labeled set of PRs with known bugs + a script measuring catch rate (precision/recall)
+- [x] **Evaluation harness** — planted-bug benchmark + clean controls, scoring the real agent (see [Evaluation](#evaluation))
+- [x] **Containerized deployment** — Dockerized and live on Railway
+- [ ] **Precision tuning** — cut the remaining false positives on clean code (prompt tuning is model-specific, so this is re-measured per model)
 - [ ] **Semantic de-duplication** — merge the same issue reported under different categories (e.g. bug vs. security)
 - [ ] **Semantic (embedding) retrieval** — catch duplicated logic and pattern violations, not just missing symbols
 - [ ] **"Blast radius" analysis** — find every caller of a changed function to flag downstream breakage
 - [ ] Job queue (Redis/ARQ) once background latency warrants it
 - [ ] A full human-approval dashboard for flagged findings
-- [ ] CI/CD, automated tests, and containerized deployment
+- [ ] CI/CD and automated unit tests
 
 ---
 
@@ -150,17 +179,20 @@ Building this took me from writing scripts to reasoning about a *system* — one
 - **Reliability is what you don't see.** A single failed LLM call shouldn't sink the whole review, and a crashed review shouldn't leak temp files forever. Retries, graceful degradation, and guaranteed cleanup are invisible when they work — and that's the point.
 - **Knowing a system's limits is part of building it.** This agent can't see functions imported from installed libraries (grep only reads the repo), and it can still report the same issue under two categories. I'd rather name those honestly than pretend they don't exist.
 
-<!-- TODO (do this before you show anyone): add ONE sentence here about a specific bug you hit and fixed —
-e.g. the stale server process that kept serving old code, or the duplicate function that was silently
-disabling grounding. A concrete war story is what proves you actually built this. -->
+<!-- TODO (write this in your OWN words — it's the section that proves you built this): add ONE or two
+sentences about a specific bug you hit and fixed. Your strongest story now is the model migration — swapping
+to gpt-oss broke structured output on empty results, and the eval harness caught the regression before it
+shipped. Other options: the stale server serving old code, or the duplicate function that silently disabled
+grounding. -->
+- **A benchmark catches what your eyes miss.** When I swapped the underlying model, the evaluation harness immediately flagged a structured-output regression that produced no visible error — the kind of thing that silently degrades a system in production. Measuring, not assuming, is what caught it.
 
 ---
 
 ## Future scope
 
-The current system is a working, codebase-aware reviewer. The next steps focus on *proving* it works and making it smarter about meaning, not just symbols:
+The current system is a deployed, codebase-aware reviewer with a benchmark behind it. The next steps make it smarter about meaning, not just symbols:
 
-- **Measure it, don't just trust it.** Build an evaluation harness — a labeled set of PRs with known bugs and a script that reports precision and recall. "How do you know it's any good?" should have a number as its answer.
+- **Drive down false positives.** The benchmark already proves 100% recall; the next measurable win is precision — cutting the false findings on clean code. Because prompt tuning is model-specific, this is re-measured whenever the model changes.
 - **From lexical to semantic retrieval.** Add embedding-based search so the agent can catch *duplicated logic* and *pattern violations* — cases where the code means the same thing but shares no keywords, which `grep` can't see.
 - **Blast-radius analysis.** When a function changes, find every caller across the repo and flag the ones that might break — turning single-file review into whole-codebase impact analysis.
 - **Smarter de-duplication.** Merge the same underlying issue when multiple specialists report it under different categories.

@@ -38,7 +38,7 @@ class Review(BaseModel):
     risk: Literal["low", "medium", "high"]
     findings: list[Findings]
 
-reviewer = llm.with_structured_output(Review)   
+reviewer = llm.with_structured_output(Review, method="json_schema")
 
 
 # =========================================== 4. Prompts ===========================================
@@ -152,7 +152,12 @@ def review_all(diff_text, context=""):
 
 # =========================================== 7. Confidence pipeline ================================================
 def review_samples(diff_text, context="", n=3):
-    return [review_all(diff_text, context) for _ in range(n)]
+    results = []
+    for i in range(n):
+        results.append(review_all(diff_text, context))
+        if i < n - 1:
+            time.sleep(15)
+    return results
 
 def aggregate_samples(runs):
     n = len(runs)

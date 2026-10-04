@@ -20,6 +20,7 @@ because they come from your real agent code, not from a description of it.
 
 import sys, os, argparse
 from collections import defaultdict
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -80,6 +81,7 @@ def main():
 
     for case in CASES:
         status, detail = score_case(case, args.samples, args.tolerance)
+        time.sleep(20)
         if case["expect"] is not None:
             cat = sorted(case["expect"]["categories"])[0]
             by_cat[cat][1] += 1

@@ -7,6 +7,7 @@ from search import repo_context
 from dotenv import load_dotenv
 from collections import defaultdict
 from fastapi import FastAPI, Header, Request, HTTPException, BackgroundTasks
+from fastapi.responses import RedirectResponse
 from review import review_with_confidence, is_confident
 
 load_dotenv()
@@ -39,7 +40,6 @@ def run_review(repo, number):
             "Accept": "application/vnd.github+json",
         }
         pr = requests.get(f"https://api.github.com/repos/{repo}/pulls/{number}", headers=headers).json()
-        print("PR API response:", pr)
         commit_id = pr["head"]["sha"]
 
         folder = clone_pr(repo, commit_id)
@@ -69,6 +69,11 @@ def run_review(repo, number):
     except Exception as e:
         print(f"[background] review FAILED for {repo} PR #{number}: {e}")
 
+
+@app.get("/")
+def root():
+    # Bare URL → the interactive API docs, so the live service shows something useful.
+    return RedirectResponse(url="/docs")
 
 @app.get("/health")
 def health():

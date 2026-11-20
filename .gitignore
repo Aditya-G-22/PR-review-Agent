@@ -20,3 +20,5 @@ fetch_diff.py
 post_test.py
 post_inline_test.py
 test_ai.py
+# Local database file (generated — never commit)
+*.db

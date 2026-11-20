@@ -9,10 +9,12 @@ from collections import defaultdict
 from fastapi import FastAPI, Header, Request, HTTPException, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from review import review_with_confidence, is_confident
+from db import init_db, save_review, SessionLocal, Review
 
 load_dotenv()
 
 app = FastAPI()
+init_db()   # create tables on startup if they don't exist yet
 
 def post_inline_comment(repo, number, commit_id, path, line, text):
     url = f"https://api.github.com/repos/{repo}/pulls/{number}/comments"
@@ -42,6 +44,17 @@ def run_review(repo, number):
         pr = requests.get(f"https://api.github.com/repos/{repo}/pulls/{number}", headers=headers).json()
         commit_id = pr["head"]["sha"]
 
+        # Idempotency: GitHub can re-deliver a webhook, and a reopened PR fires again.
+        # If this exact commit was already reviewed, skip — no duplicate comments, no wasted LLM calls.
+        db = SessionLocal()
+        already = (db.query(Review)
+                     .filter_by(repo=repo, pr_number=number, commit_sha=commit_id)
+                     .first())
+        db.close()
+        if already:
+            print(f"[background] SKIP {repo} PR #{number} @ {commit_id[:7]} — already reviewed")
+            return
+
         folder = clone_pr(repo, commit_id)
         try:
             context = repo_context(diff_text, folder)
@@ -62,6 +75,11 @@ def run_review(repo, number):
                         f"_confidence: {f['confidence']:.0%}_" 
                     )
                 post_inline_comment(repo, number, commit_id, file, line, "\n\n---\n\n".join(blocks))
+
+            # Persist this review + its findings (posted vs flagged-only recorded per finding)
+            for f in findings:
+                f["posted"] = is_confident(f)
+            save_review(repo, number, commit_id, findings)
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
@@ -78,6 +96,41 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/reviews")
+def list_reviews(limit: int = 20):
+    """Most recent reviews (newest first), each with its findings."""
+    db = SessionLocal()
+    try:
+        reviews = (db.query(Review)
+                     .order_by(Review.created_at.desc())
+                     .limit(limit)
+                     .all())
+        return [
+            {
+                "id": r.id,
+                "repo": r.repo,
+                "pr_number": r.pr_number,
+                "commit_sha": r.commit_sha,
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "findings": [
+                    {
+                        "file": f.file,
+                        "line": f.line,
+                        "category": f.category,
+                        "severity": f.severity,
+                        "title": f.title,
+                        "confidence": f.confidence,
+                        "posted": f.posted,
+                    }
+                    for f in r.findings
+                ],
+            }
+            for r in reviews
+        ]
+    finally:
+        db.close()
 
 @app.post("/webhook")
 async def receive_webhook(

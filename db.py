@@ -6,6 +6,10 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 # SQLite locally; on Railway set DATABASE_URL to the Postgres URL — same code.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///reviews.db")
+# Some hosts (Heroku-style) hand out the legacy "postgres://" scheme, which
+# SQLAlchemy no longer accepts — normalize it to "postgresql://".
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()

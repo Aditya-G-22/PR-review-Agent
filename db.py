@@ -6,10 +6,13 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 # SQLite locally; on Railway set DATABASE_URL to the Postgres URL — same code.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///reviews.db")
-# Some hosts (Heroku-style) hand out the legacy "postgres://" scheme, which
-# SQLAlchemy no longer accepts — normalize it to "postgresql://".
+# Normalize the legacy "postgres://" scheme, then pin the driver to psycopg2.
+# (SQLAlchemy 2.1 defaults a bare "postgresql://" URL to psycopg v3, which we
+# don't install — we ship psycopg2-binary, so select it explicitly.)
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()

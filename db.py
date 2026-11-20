@@ -13,7 +13,10 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
-engine = create_engine(DATABASE_URL)
+# pool_pre_ping: test a pooled connection before handing it out and transparently
+# reconnect if it's dead. Essential for serverless Postgres (Neon) that suspends
+# idle compute and drops connections. pool_recycle drops connections older than 5 min.
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 

@@ -44,6 +44,17 @@ class Finding(Base):
     posted = Column(Boolean, default=True)              # posted vs flagged-only
     review = relationship("Review", back_populates="findings")
 
+def already_reviewed(repo, pr_number, commit_sha):
+    """True if this exact commit was already reviewed — the idempotency check."""
+    db = SessionLocal()
+    try:
+        return (db.query(Review)
+                  .filter_by(repo=repo, pr_number=pr_number, commit_sha=commit_sha)
+                  .first() is not None)
+    finally:
+        db.close()
+
+
 def init_db():
     Base.metadata.create_all(engine)
 

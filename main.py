@@ -9,7 +9,7 @@ from collections import defaultdict
 from fastapi import FastAPI, Header, Request, HTTPException, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from review import review_with_confidence, is_confident
-from db import init_db, save_review, SessionLocal, Review
+from db import init_db, save_review, SessionLocal, Review, already_reviewed
 
 load_dotenv()
 
@@ -46,12 +46,7 @@ def run_review(repo, number):
 
         # Idempotency: GitHub can re-deliver a webhook, and a reopened PR fires again.
         # If this exact commit was already reviewed, skip — no duplicate comments, no wasted LLM calls.
-        db = SessionLocal()
-        already = (db.query(Review)
-                     .filter_by(repo=repo, pr_number=number, commit_sha=commit_id)
-                     .first())
-        db.close()
-        if already:
+        if already_reviewed(repo, number, commit_id):
             print(f"[background] SKIP {repo} PR #{number} @ {commit_id[:7]} — already reviewed")
             return
 
